@@ -1,0 +1,79 @@
+---
+title: "Analysis of tissues by their gene expressions"
+author: "Fereidoun Mianji"
+date: "11/1/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1. Introduction
+
+There is a database in dslab named tissue_gene_expressions that contains 189 ovservations of 7 tissues. Observations consist of 500 gene expressions. As this is a hyperdimentional dataset, classification of tissues using all the dimentions is computationally too heavy. Here, we explore the principal component analysis (PCA) to see how many PCAs are sufficient for analysis of this type of datasets.
+
+2. PCA transformation and a preliminary classification
+
+First, we do a transformation on the dataset to define its transformation matrix and to see which principal components (PC) are more important. 
+
+```{r evaluating the PCAs of the dataset, message=FALSE}
+library(dslabs)
+library(tidyverse)
+
+tissue_gene_expression <- data("tissue_gene_expression")  %>%
+save(tissue_gene_expression, file = 'rdas/tissue_gene_expression.rda')
+
+load('rdas/tissue_gene_expression.rda')
+pca <- prcomp(tissue_gene_expression$x)
+pc <- 1:nrow(tissue_gene_expression$x) # As the n of obser. is less than predictors, the n of PCs is equal to n of obser.
+qplot(pc, pca$sdev) + 
+xlab('PC number') + ylab('PC standard deviation')  # to see the importance of PCs +
+ggsave('fig/PC-sd.png')
+```
+
+In the plot the first few PCs show a high variability over the genes (i.e., high standard deviation). We roughly can say the first PCA alone will produce an acceptable classification result (instead of 500 indicators), and using the first 6 PCA we will expect a very good result.
+
+Now let see how observations are close to each other, we will plot the first two principal components with color representing tissue type.
+
+```{r}
+data.frame(PC1 = pca$x[,1], PC2 = pca$x[,2],
+           label=tissue_gene_expression$y) %>%
+  ggplot(aes(PC1, PC2, fill=label)) +
+  geom_point(cex=3, pch=21) +
+  ggsave('fig/PC1-vs-PC2.png')
+```
+
+This shows that some classes (tissues) are close to each other and pretty hard to discriminate.
+
+3. Classification
+
+Using the available tissue lables for the dataset, the average of each observation is plotted against its first principal component. The plot shows that using only these two parameters classificatio of the tissues are possible. The correlation between the average and PC1 are calculated at the end. It is about 0.6, which is a moderate correlation confirming that relying only on these variables is not enough for a robust classification. 
+
+```{r seperability of tissues by PC1 versus the observation average, message=FALSE}
+col_means <- colMeans(tissue_gene_expression$x)
+x_test <- sweep(tissue_gene_expression$x, 2, col_means) %*% pca$rotation
+
+data.frame(PC1 = x_test[,1], avg = rowMeans(tissue_gene_expression$x), 
+           label=tissue_gene_expression$y) %>%
+  ggplot(aes(PC1, avg, fill=label))+
+  geom_point(cex=3, pch=21) + ylab('Observation average (over all gene expressions)')
+  ggsave('fig/PC-vs-avg.png')
+cor(x_test[,1], rowMeans(tissue_gene_expression$x))
+```
+
+4. Optimum number of PCs for an accurate classification
+
+To see how the most important PCs of this dataset work and how many of them are essential for an appropriate classification of these 7 tissues, their ranges for every tissue (lable) are depicted in seperate boxplots.
+
+```{r valuse of PCs for tissues, message=FALSE}
+ten_PC <- as.data.frame(x_test[,1:10]) %>% mutate(labels = tissue_gene_expression$y)
+ten_PC %>% gather(PCs, value, -labels) %>%
+  ggplot(aes(labels, value, fill = labels)) +
+  geom_boxplot() +
+  facet_wrap(~PCs, scales = "free", ncol = 4) +
+  theme(axis.text.x = element_blank(), legend.position="bottom") +
+  ggsave('fig/PCs-lables.png')
+```
+
+As can be seen, PC1 to PC4 are very discriminative for tissues while PC8 to PC10 are almost useless. Therefore, using only the first 6 or 7 PCs instead of the original 500 indicators (genes) would be a very efficient and accurate way for classification of the under-study 7 tissues based on their gene expressions.
